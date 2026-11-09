@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+*.db
+protectfarm.db
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# IDE / System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,35 @@
+services:
+  # 1. FastAPI Web Service on Render
+  - type: web
+    name: protectfarm-backend
+    env: python
+    region: oregon
+    plan: standard
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: protectfarm-mysql
+          property: connectionString
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: OPENWEATHER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+
+databases:
+  # MySQL database on Render
+  - name: protectfarm-mysql
+    region: oregon
+    plan: standard
+    databaseName: protectfarm
+    user: protectfarm_admin
