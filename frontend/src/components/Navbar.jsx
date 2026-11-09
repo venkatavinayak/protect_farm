@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, MapPin, Globe, User, Bell } from 'lucide-react';
+import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
+import { ShieldCheck, MapPin, Globe, LogIn } from 'lucide-react';
 
 const LANGUAGES = [
   { code: 'te', label: 'తెలుగు (Telugu)' },
@@ -25,7 +26,7 @@ export default function Navbar({ onOpenProfile }) {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-1.5">
-              PROTECTFARM <span className="text-xs bg-emerald-700 text-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold border border-emerald-600">AI Real-Time</span>
+              PROTECTFARM <span className="text-xs bg-emerald-700 text-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold border border-emerald-600">Real-Time</span>
             </h1>
             <p className="text-xs text-emerald-200 hidden sm:block">Agricultural Climate Defense & Welfare Intelligence</p>
           </div>
@@ -34,12 +35,12 @@ export default function Navbar({ onOpenProfile }) {
         {/* Location Pill */}
         <div className="hidden md:flex items-center space-x-2 bg-emerald-900/60 px-3 py-1.5 rounded-full border border-emerald-700/60 text-xs">
           <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="font-medium text-emerald-100">{activeFarm.farm_name}</span>
+          <span className="font-medium text-emerald-100 truncate max-w-[200px]">{activeFarm.address.split(',')[0]}</span>
           <span className="text-emerald-400">•</span>
           <span className="text-emerald-200">{activeFarm.land_area_acres} Acres</span>
         </div>
 
-        {/* Right Actions: Language & Farmer */}
+        {/* Right Actions: Language & Auth */}
         <div className="flex items-center space-x-3">
           
           {/* Language Selector */}
@@ -58,16 +59,28 @@ export default function Navbar({ onOpenProfile }) {
             </select>
           </div>
 
-          {/* Farmer User Badge */}
-          <button
-            onClick={onOpenProfile}
-            className="flex items-center space-x-2 bg-emerald-700 hover:bg-emerald-600 transition px-3 py-1.5 rounded-lg border border-emerald-600 text-xs"
-          >
-            <div className="w-6 h-6 rounded-full bg-emerald-900 flex items-center justify-center font-bold text-emerald-200 text-xs">
-              {farmer.full_name.charAt(0)}
+          {/* Real-Time Clerk Auth Integration */}
+          <SignedIn>
+            <div className="flex items-center space-x-2 bg-emerald-700/80 border border-emerald-500/60 px-2.5 py-1 rounded-xl">
+              <UserButton afterSignOutUrl="/" />
+              <div className="hidden sm:flex flex-col text-left">
+                <span className="text-xs font-semibold text-white leading-tight">{farmer.full_name}</span>
+                <span className="text-[10px] text-emerald-200 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span> Google Auth
+                </span>
+              </div>
             </div>
-            <span className="hidden sm:inline font-medium">{farmer.full_name}</span>
-          </button>
+          </SignedIn>
+
+          <SignedOut>
+            <SignInButton mode="modal">
+              <button className="flex items-center space-x-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-bold px-3 py-1.5 rounded-xl shadow-md transition text-xs">
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign In with Google</span>
+              </button>
+            </SignInButton>
+          </SignedOut>
+
         </div>
 
       </div>

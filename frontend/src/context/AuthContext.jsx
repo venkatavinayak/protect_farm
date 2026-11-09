@@ -1,15 +1,21 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useUser, useClerk } from '@clerk/clerk-react';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
+  const { isLoaded, isSignedIn, user } = useUser();
+  const { signOut } = useClerk();
+
   const [farmer, setFarmer] = useState({
-    id: 1,
-    clerk_user_id: "user_clerk_dev_farmer_123",
-    full_name: "Ramu Kisan",
-    email: "farmer.ramu@protectfarm.org",
-    phone_number: "+91 98480 22334",
-    preferred_language: "te" // Default Telugu
+    id: "guest",
+    clerk_user_id: null,
+    full_name: "Guest Farmer",
+    email: "",
+    avatar_url: null,
+    phone_number: "",
+    preferred_language: "te", // Default Telugu
+    is_authenticated: false
   });
 
   const [activeFarm, setActiveFarm] = useState({
@@ -47,6 +53,39 @@ export const AuthProvider = ({ children }) => {
 
   const [language, setLanguage] = useState("te");
 
+  // Sync real-time Clerk user into state when authenticated via Google / Clerk
+  useEffect(() => {
+    if (isLoaded && isSignedIn && user) {
+      const displayName = user.fullName || user.firstName || (user.primaryEmailAddress ? user.primaryEmailAddress.emailAddress.split('@')[0] : "Farmer");
+      
+      setFarmer({
+        id: user.id,
+        clerk_user_id: user.id,
+        full_name: displayName,
+        email: user.primaryEmailAddress ? user.primaryEmailAddress.emailAddress : "",
+        avatar_url: user.imageUrl,
+        phone_number: user.primaryPhoneNumber ? user.primaryPhoneNumber.phoneNumber : "",
+        preferred_language: language,
+        is_authenticated: true
+      });
+
+      setActiveFarm(prev => ({
+        ...prev,
+        farm_name: `${user.firstName || displayName}'s Farmland`
+      }));
+    } else if (isLoaded && !isSignedIn) {
+      setFarmer(prev => ({
+        ...prev,
+        id: "guest",
+        clerk_user_id: null,
+        full_name: "Guest Farmer",
+        email: "",
+        avatar_url: null,
+        is_authenticated: false
+      }));
+    }
+  }, [isLoaded, isSignedIn, user]);
+
   // Sync language with farmer preference
   const updateLanguage = (newLang) => {
     setLanguage(newLang);
@@ -63,13 +102,14 @@ export const AuthProvider = ({ children }) => {
     setPlantedCrops(prev => [...prev, newCrop]);
   };
 
-  const updateFarmLocation = (coords, areaAcres, geojson) => {
+  const updateFarmLocation = (coords, areaAcres, geojson, address = null) => {
     setActiveFarm(prev => ({
       ...prev,
       latitude: coords.lat,
       longitude: coords.lng,
       land_area_acres: areaAcres || prev.land_area_acres,
-      boundary_geojson: geojson
+      boundary_geojson: geojson || prev.boundary_geojson,
+      address: address || prev.address
     }));
   };
 
@@ -79,10 +119,13 @@ export const AuthProvider = ({ children }) => {
       activeFarm,
       plantedCrops,
       language,
+      isLoaded,
+      isSignedIn,
       updateLanguage,
       addCrop,
       updateFarmLocation,
-      setFarmer
+      setFarmer,
+      signOut
     }}>
       {children}
     </AuthContext.Provider>

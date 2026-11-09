@@ -9,15 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "@clerk/clerk-react": "^5.61.11",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.363.0",
-    "leaflet": "^1.9.4"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.11",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
-    "@types/leaflet": "^1.9.11",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
