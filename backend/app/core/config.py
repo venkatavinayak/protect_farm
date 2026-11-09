@@ -1,5 +1,10 @@
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+
+# Resolve path to backend/.env
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+ENV_PATH = BASE_DIR / ".env"
 
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
@@ -34,7 +39,7 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "PROTECTFARM Alerts <alerts@protectfarm.org>"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore"
     )
