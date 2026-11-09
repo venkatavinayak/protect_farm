@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
-import { ShieldCheck, MapPin, Globe, LogIn } from 'lucide-react';
+import { ShieldCheck, MapPin, Globe, LogIn, Settings2, Sprout } from 'lucide-react';
 
 const LANGUAGES = [
   { code: 'te', label: 'తెలుగు (Telugu)' },
@@ -12,8 +12,9 @@ const LANGUAGES = [
   { code: 'en', label: 'English' }
 ];
 
-export default function Navbar({ onOpenProfile }) {
-  const { farmer, activeFarm, language, updateLanguage } = useAuth();
+export default function Navbar() {
+  const { farmer, activeFarm, plantedCrops, language, updateLanguage, reopenSetup } = useAuth();
+  const primaryCrop = plantedCrops && plantedCrops.length > 0 ? plantedCrops[0].crop_name : null;
 
   return (
     <header className="bg-emerald-800 text-white shadow-md sticky top-0 z-50">
@@ -32,17 +33,37 @@ export default function Navbar({ onOpenProfile }) {
           </div>
         </div>
 
-        {/* Location Pill */}
+        {/* Location & Crop Pill */}
         <div className="hidden md:flex items-center space-x-2 bg-emerald-900/60 px-3 py-1.5 rounded-full border border-emerald-700/60 text-xs">
           <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="font-medium text-emerald-100 truncate max-w-[200px]">{activeFarm.address.split(',')[0]}</span>
+          <span className="font-medium text-emerald-100 truncate max-w-[160px]">
+            {activeFarm.address ? activeFarm.address.split(',')[0] : 'Farm Field'}
+          </span>
           <span className="text-emerald-400">•</span>
-          <span className="text-emerald-200">{activeFarm.land_area_acres} Acres</span>
+          <span className="text-emerald-200 font-semibold">{activeFarm.land_area_acres} Acres</span>
+          {primaryCrop && (
+            <>
+              <span className="text-emerald-400">•</span>
+              <span className="text-amber-300 font-semibold flex items-center gap-1">
+                <Sprout className="w-3 h-3" /> {primaryCrop}
+              </span>
+            </>
+          )}
         </div>
 
-        {/* Right Actions: Language & Auth */}
+        {/* Right Actions: Edit Farm, Language, Clerk Profile */}
         <div className="flex items-center space-x-3">
           
+          {/* Edit Farm Setup button */}
+          <button
+            onClick={reopenSetup}
+            className="hidden sm:flex items-center space-x-1.5 bg-emerald-900/70 hover:bg-emerald-700 px-2.5 py-1.5 rounded-lg border border-emerald-700 text-xs text-emerald-200 transition"
+            title="Edit Farm Location & Crop Details"
+          >
+            <Settings2 className="w-3.5 h-3.5 text-emerald-300" />
+            <span>Farm Setup</span>
+          </button>
+
           {/* Language Selector */}
           <div className="relative flex items-center bg-emerald-900/80 rounded-lg px-2 py-1 border border-emerald-700">
             <Globe className="w-4 h-4 text-emerald-300 mr-1.5" />
@@ -64,9 +85,11 @@ export default function Navbar({ onOpenProfile }) {
             <div className="flex items-center space-x-2 bg-emerald-700/80 border border-emerald-500/60 px-2.5 py-1 rounded-xl">
               <UserButton afterSignOutUrl="/" />
               <div className="hidden sm:flex flex-col text-left">
-                <span className="text-xs font-semibold text-white leading-tight">{farmer.full_name}</span>
+                <span className="text-xs font-semibold text-white leading-tight">
+                  {farmer.full_name || 'Farmer'}
+                </span>
                 <span className="text-[10px] text-emerald-200 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span> Google Auth
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span> Google Verified
                 </span>
               </div>
             </div>
@@ -76,7 +99,7 @@ export default function Navbar({ onOpenProfile }) {
             <SignInButton mode="modal">
               <button className="flex items-center space-x-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-900 font-bold px-3 py-1.5 rounded-xl shadow-md transition text-xs">
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In with Google</span>
+                <span>Sign In</span>
               </button>
             </SignInButton>
           </SignedOut>
