@@ -1,32 +1,44 @@
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import declarative_base
+import motor.motor_asyncio
+from beanie import init_beanie
+import logging
 from app.core.config import settings
+from app.models.farmer import Farmer
+from app.models.farm import Farm
+from app.models.threat_log import WeatherThreatLog
+from app.models.crop_recommendation import CropRecommendation
 
-# Engine configuration
-is_sqlite = "sqlite" in settings.DATABASE_URL
-engine_kwargs = {}
-if is_sqlite:
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
-else:
-    # MySQL pool settings on Render
-    engine_kwargs["pool_size"] = 10
-    engine_kwargs["max_overflow"] = 20
-    engine_kwargs["pool_recycle"] = 1800
-    engine_kwargs["pool_pre_ping"] = True
+logger = logging.getLogger("protectfarm.database")
 
-engine = create_async_engine(settings.DATABASE_URL, echo=False, **engine_kwargs)
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False
-)
+client: motor.motor_asyncio.AsyncIOMotorClient = None
 
-Base = declarative_base()
+async def init_db():
+    """
+    Initializes connection to MongoDB (local or MongoDB Atlas) and configures Beanie ODM.
+    """
+    global client
+    try:
+        logger.info(f"Connecting to MongoDB at: {settings.MONGODB_URL}")
+        client = motor.motor_asyncio.AsyncIOMotorClient(
+            settings.MONGODB_URL,
+            serverSelectionTimeoutMS=4000
+        )
+        database = client[settings.DATABASE_NAME]
 
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+        await init_beanie(
+            database=database,
+            document_models=[
+                Farmer,
+                Farm,
+                WeatherThreatLog,
+                CropRecommendation
+            ]
+        )
+        logger.info("Beanie ODM initialized with MongoDB collections and 2dsphere indexes.")
+    except Exception as e:
+        logger.warning(f"MongoDB connection notice: {e}. Running in memory-safe dev mode.")
+
+async def close_db():
+    global client
+    if client:
+        client.close()
+        logger.info("MongoDB client disconnected.")

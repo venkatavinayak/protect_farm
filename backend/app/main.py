@@ -4,35 +4,32 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import init_db, close_db
 from app.api.v1 import farmers, farms, weather_threats, crop_advisor, biopesticides
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("protectfarm")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-create tables on startup (works seamlessly on MySQL and SQLite)
-    logger.info("Initializing database tables...")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database initialized successfully.")
+    # Initialize MongoDB connection and Beanie ODM
+    logger.info("Connecting to MongoDB and initializing Beanie ODM...")
+    await init_db()
     yield
-    # Shutdown logic
-    await engine.dispose()
+    # Cleanup MongoDB connection
+    await close_db()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="1.0.0",
-    description="Real-Time Geospatial Agricultural Intelligence & Farmer Welfare Platform",
+    description="Real-Time Geospatial Agricultural Intelligence & Farmer Welfare Platform (MongoDB + Beanie)",
     lifespan=lifespan
 )
 
 # CORS setup for Netlify frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict to Netlify domains
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,12 +48,12 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "PROTECTFARM Real-Time Intelligence API",
-        "database": "connected"
+        "database": "MongoDB (Beanie ODM)"
     }
 
 @app.get("/", tags=["Root"])
 async def root():
     return {
-        "message": "Welcome to PROTECTFARM API. Real-time protection for farmers.",
+        "message": "Welcome to PROTECTFARM API with MongoDB. Real-time protection for farmers.",
         "docs_url": "/docs"
     }

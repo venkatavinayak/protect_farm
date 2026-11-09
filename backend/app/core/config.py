@@ -1,8 +1,5 @@
-from typing import List, Union
+from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AnyHttpUrl, validator
-import json
-import os
 
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
@@ -17,8 +14,9 @@ class Settings(BaseSettings):
         "https://localhost"
     ]
     
-    # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./protectfarm.db"
+    # MongoDB Database configuration (Local or MongoDB Atlas)
+    MONGODB_URL: str = "mongodb://localhost:27017"
+    DATABASE_NAME: str = "protectfarm"
     
     # Clerk Auth
     CLERK_SECRET_KEY: str = "mock_secret"

@@ -6,7 +6,7 @@ class FarmerBase(BaseModel):
     full_name: str
     email: str
     phone_number: Optional[str] = None
-    preferred_language: str = "te" # default Telugu (or hi, ta, kn, mr, en)
+    preferred_language: str = "te"
 
 class FarmerCreate(FarmerBase):
     clerk_user_id: str
@@ -17,7 +17,7 @@ class FarmerUpdate(BaseModel):
     preferred_language: Optional[str] = None
 
 class FarmerOut(FarmerBase):
-    id: int
+    id: Optional[str] = None
     clerk_user_id: str
     created_at: Optional[datetime] = None
 

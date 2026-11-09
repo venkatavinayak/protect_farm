@@ -1,41 +1,56 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
-from app.core.database import get_db
+from typing import List
 from app.api.deps import get_current_farmer
 from app.models.farmer import Farmer
 from app.models.farm import Farm
 from app.schemas.farmer import FarmerOut, FarmerUpdate
-from app.schemas.farm import FarmerFullProfile
+from app.schemas.farm import FarmerFullProfile, FarmOut
 
 router = APIRouter()
 
 @router.get("/me", response_model=FarmerFullProfile)
 async def get_my_profile(
-    current_farmer: Farmer = Depends(get_current_farmer),
-    db: AsyncSession = Depends(get_db)
+    current_farmer: Farmer = Depends(get_current_farmer)
 ):
     """
-    Returns the complete profile of the farmer, including their farms and planted crops.
+    Returns the complete profile of the farmer from MongoDB, including all farms and planted crops.
     """
-    stmt = (
-        select(Farmer)
-        .options(selectinload(Farmer.farms).selectinload(Farm.crops))
-        .where(Farmer.id == current_farmer.id)
+    farms = await Farm.find(Farm.farmer_id == str(current_farmer.id)).to_list()
+    
+    # Format farms output with string IDs
+    farm_outs = []
+    for f in farms:
+        farm_outs.append(FarmOut(
+            id=str(f.id),
+            farmer_id=str(f.farmer_id),
+            farm_name=f.farm_name,
+            address=f.address,
+            latitude=f.latitude,
+            longitude=f.longitude,
+            boundary_geojson=f.boundary_geojson,
+            land_area_acres=f.land_area_acres,
+            soil_type=f.soil_type,
+            crops=f.crops,
+            created_at=f.created_at
+        ))
+
+    return FarmerFullProfile(
+        id=str(current_farmer.id),
+        clerk_user_id=current_farmer.clerk_user_id,
+        full_name=current_farmer.full_name,
+        email=current_farmer.email,
+        phone_number=current_farmer.phone_number,
+        preferred_language=current_farmer.preferred_language,
+        farms=farm_outs
     )
-    result = await db.execute(stmt)
-    farmer_with_relations = result.scalars().first()
-    return farmer_with_relations
 
 @router.put("/me", response_model=FarmerOut)
 async def update_my_profile(
     update_data: FarmerUpdate,
-    current_farmer: Farmer = Depends(get_current_farmer),
-    db: AsyncSession = Depends(get_db)
+    current_farmer: Farmer = Depends(get_current_farmer)
 ):
     """
-    Updates the farmer's full name, phone number, or preferred language.
+    Updates the farmer's full name, phone number, or preferred language in MongoDB.
     """
     if update_data.full_name is not None:
         current_farmer.full_name = update_data.full_name
@@ -44,7 +59,14 @@ async def update_my_profile(
     if update_data.preferred_language is not None:
         current_farmer.preferred_language = update_data.preferred_language
 
-    db.add(current_farmer)
-    await db.commit()
-    await db.refresh(current_farmer)
-    return current_farmer
+    await current_farmer.save()
+    
+    return FarmerOut(
+        id=str(current_farmer.id),
+        clerk_user_id=current_farmer.clerk_user_id,
+        full_name=current_farmer.full_name,
+        email=current_farmer.email,
+        phone_number=current_farmer.phone_number,
+        preferred_language=current_farmer.preferred_language,
+        created_at=current_farmer.created_at
+    )

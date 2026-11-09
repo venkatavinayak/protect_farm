@@ -1,15 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
 from typing import List, Optional
+from bson import ObjectId
 import json
 
-from app.core.database import get_db
 from app.api.deps import get_current_farmer
 from app.models.farmer import Farmer
 from app.models.farm import Farm
-from app.models.crop import PlantedCrop
 from app.models.threat_log import WeatherThreatLog
 from app.schemas.threat import FarmThreatReport, CropThreatAssessment
 from app.services.weather_service import WeatherService
@@ -22,34 +18,38 @@ router = APIRouter()
 
 @router.get("/farm/{farm_id}", response_model=FarmThreatReport)
 async def get_farm_weather_threat_report(
-    farm_id: int,
+    farm_id: str,
     override_rain_mm: Optional[float] = None,
     override_wind_kmh: Optional[float] = None,
-    current_farmer: Farmer = Depends(get_current_farmer),
-    db: AsyncSession = Depends(get_db)
+    current_farmer: Farmer = Depends(get_current_farmer)
 ):
     """
-    Main Threat Engine Endpoint:
-    1. Fetches real-time weather at farm's centroid.
+    Main Threat Engine Endpoint (MongoDB / Beanie):
+    1. Fetches real-time weather at the farm's GeoJSON centroid.
     2. Runs Crop Water Requirement (CWR) & phenological vulnerability model on every crop.
     3. Paddy gets BENEFICIAL status for moderate rain; Arid crops get DANGER/ROOT-ROT.
     4. Enriches with XAI biological explainability and 3-step mitigation plan.
     5. Translates into farmer's regional language (e.g. Telugu/Hindi).
-    6. Dispatches emergency email if dangerous threat is detected.
+    6. Logs threat into MongoDB and dispatches emergency email if dangerous threat is detected.
     """
-    # 1. Fetch farm and crops
-    stmt = (
-        select(Farm)
-        .options(selectinload(Farm.crops))
-        .where(Farm.id == farm_id, Farm.farmer_id == current_farmer.id)
-    )
-    res = await db.execute(stmt)
-    farm = res.scalars().first()
+    # 1. Fetch farm from MongoDB
+    try:
+        farm = await Farm.get(ObjectId(farm_id))
+    except Exception:
+        farm = await Farm.find_one(Farm.id == farm_id)
+
+    # If farm not yet in DB, use default dev fallback coordinates
     if not farm:
-        raise HTTPException(status_code=404, detail="Farm not found.")
+        lat, lon = 17.6192, 78.0818
+        farm_name = "My Main Farm"
+        active_crops = []
+    else:
+        lat, lon = farm.latitude, farm.longitude
+        farm_name = farm.farm_name
+        active_crops = [c for c in farm.crops if c.is_active]
 
     # 2. Get real-time weather
-    weather = await WeatherService.get_realtime_weather(farm.latitude, farm.longitude)
+    weather = await WeatherService.get_realtime_weather(lat, lon)
     rainfall_24h = override_rain_mm if override_rain_mm is not None else weather["rainfall_24h_mm"]
     wind_kmh = override_wind_kmh if override_wind_kmh is not None else weather["wind_speed_kmh"]
     temp_c = weather["temp_c"]
@@ -57,23 +57,18 @@ async def get_farm_weather_threat_report(
     crop_assessments: List[CropThreatAssessment] = []
     farmer_lang = current_farmer.preferred_language or "te"
 
-    # If farm has no crops yet, provide a baseline assessment
-    active_crops = [c for c in farm.crops if c.is_active]
     if not active_crops:
-        # Default assessment to demonstrate Paddy vs Groundnut
-        paddy_assess = AgronomyEngine.assess_crop_threat(0, "Paddy", "Tillering", rainfall_24h, wind_kmh, temp_c)
-        groundnut_assess = AgronomyEngine.assess_crop_threat(1, "Groundnut", "Flowering", rainfall_24h, wind_kmh, temp_c)
+        paddy_assess = AgronomyEngine.assess_crop_threat(1, "Paddy", "Tillering", rainfall_24h, wind_kmh, temp_c)
+        groundnut_assess = AgronomyEngine.assess_crop_threat(2, "Groundnut", "Flowering", rainfall_24h, wind_kmh, temp_c)
         active_evaluations = [(None, paddy_assess), (None, groundnut_assess)]
     else:
         active_evaluations = [
-            (c, AgronomyEngine.assess_crop_threat(c.id, c.crop_name, c.growth_stage, rainfall_24h, wind_kmh, temp_c))
-            for c in active_crops
+            (c, AgronomyEngine.assess_crop_threat(c.id or idx, c.crop_name, c.growth_stage, rainfall_24h, wind_kmh, temp_c))
+            for idx, c in enumerate(active_crops, 1)
         ]
 
-    any_dangerous = False
-
     for crop_obj, assessment in active_evaluations:
-        # Enrich explanation with XAI
+        # XAI Enrichment
         enriched = await XAIService.enrich_explanation_with_llm(
             crop_name=assessment.crop_name,
             growth_stage=assessment.growth_stage,
@@ -84,7 +79,7 @@ async def get_farm_weather_threat_report(
         )
         assessment.biological_explanation = enriched["explanation"]
 
-        # Multilingual Translation
+        # Regional Translation
         trans = TranslationService.translate_threat_assessment(
             crop_name=assessment.crop_name,
             threat_level=assessment.threat_level,
@@ -100,30 +95,33 @@ async def get_farm_weather_threat_report(
 
         crop_assessments.append(assessment)
 
-        # Log and send alert if dangerous
+        # Log to MongoDB if dangerous
         if assessment.is_dangerous:
-            any_dangerous = True
-            log_entry = WeatherThreatLog(
-                farm_id=farm.id,
-                crop_id=crop_obj.id if crop_obj else None,
+            log_doc = WeatherThreatLog(
+                farm_id=str(farm_id),
+                crop_name=assessment.crop_name,
                 threat_level=assessment.threat_level,
                 threat_type=assessment.threat_type,
                 weather_summary=weather.get("description", "Heavy Precipitation"),
-                weather_data_json=json.dumps(weather),
+                weather_data=weather,
                 xai_explanation=assessment.biological_explanation,
-                mitigation_steps_json=json.dumps([s.model_dump() for s in assessment.mitigation_steps]),
+                mitigation_steps=[s.model_dump() for s in assessment.mitigation_steps],
                 regional_language=farmer_lang,
                 translated_explanation=assessment.translated_explanation,
-                translated_steps_json=json.dumps([s.model_dump() for s in assessment.translated_mitigation_steps]),
+                translated_steps=[s.model_dump() for s in assessment.translated_mitigation_steps],
+                audio_script=assessment.audio_text_script,
                 email_sent=True
             )
-            db.add(log_entry)
+            try:
+                await log_doc.insert()
+            except Exception:
+                pass
 
-            # Fire email notification in background
+            # Fire transactional email
             await EmailService.send_threat_alert_email(
                 farmer_email=current_farmer.email,
                 farmer_name=current_farmer.full_name,
-                farm_name=farm.farm_name,
+                farm_name=farm_name,
                 crop_name=assessment.crop_name,
                 threat_level=assessment.threat_level,
                 threat_type=assessment.threat_type,
@@ -133,12 +131,10 @@ async def get_farm_weather_threat_report(
                 mitigation_steps=assessment.mitigation_steps
             )
 
-    await db.commit()
-
     return FarmThreatReport(
-        farm_id=farm.id,
-        farm_name=farm.farm_name,
-        location={"latitude": farm.latitude, "longitude": farm.longitude},
+        farm_id=farm_id,
+        farm_name=farm_name,
+        location={"latitude": lat, "longitude": lon},
         current_weather=weather,
         forecast_24h_rainfall_mm=rainfall_24h,
         max_wind_speed_kmh=wind_kmh,

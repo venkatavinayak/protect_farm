@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Union
 
 class RecommendedCrop(BaseModel):
     rank: int
@@ -13,7 +13,7 @@ class RecommendedCrop(BaseModel):
     agronomic_rationale: str
 
 class CropRecommendationResponse(BaseModel):
-    farm_id: int
+    farm_id: Union[str, int]
     latitude: float
     longitude: float
     detected_soil_type: str

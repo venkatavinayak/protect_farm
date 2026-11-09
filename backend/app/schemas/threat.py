@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 
 class MitigationStep(BaseModel):
@@ -9,7 +9,7 @@ class MitigationStep(BaseModel):
     action_description: str
 
 class CropThreatAssessment(BaseModel):
-    crop_id: int
+    crop_id: Optional[Union[str, int]] = None
     crop_name: str
     crop_category: str
     growth_stage: str
@@ -26,7 +26,7 @@ class CropThreatAssessment(BaseModel):
     audio_text_script: str
 
 class FarmThreatReport(BaseModel):
-    farm_id: int
+    farm_id: Union[str, int]
     farm_name: str
     location: Dict[str, float] # lat, lon
     current_weather: Dict[str, Any]
@@ -34,4 +34,4 @@ class FarmThreatReport(BaseModel):
     max_wind_speed_kmh: float
     weather_condition: str
     crop_assessments: List[CropThreatAssessment]
-    timestamp: datetime = datetime.utcnow()
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
