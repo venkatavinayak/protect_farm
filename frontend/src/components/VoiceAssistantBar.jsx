@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, VolumeX, Play, Pause, RotateCcw, Sparkles, Mic, MicOff, Send, Loader2, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
+import { Volume2, VolumeX, Play, Pause, RotateCcw, Sparkles, Mic, MicOff, Send, Loader2, MessageSquare, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { askGeminiVoiceAdvisor, detectLanguage, getLangSpeechCode } from '../services/geminiService';
+import { askGeminiVoiceAdvisor, detectLanguage, getLangSpeechCode, getLangLabel } from '../services/geminiService';
 
 export default function VoiceAssistantBar({ scriptText, currentThreat }) {
   const { activeFarm, plantedCrops, farmer } = useAuth();
@@ -12,16 +12,17 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
   
   // Chat & Detailed Solution state
   const [userQuery, setUserQuery] = useState('');
-  const [detailedSolution, setDetailedSolution] = useState('');
+  const [chatLog, setChatLog] = useState([]);
   const [spokenAudioText, setSpokenAudioText] = useState(scriptText || '');
   const [detectedLanguage, setDetectedLanguage] = useState('te');
   const [speechLangCode, setSpeechLangCode] = useState('te-IN');
+  const [langLabel, setLangLabel] = useState('తెలుగు (Telugu)');
   const [loadingAi, setLoadingAi] = useState(false);
-  const [showDetailedBox, setShowDetailedBox] = useState(false);
 
   const synthRef = useRef(null);
   const audioElemRef = useRef(null);
   const recognitionRef = useRef(null);
+  const chatBottomRef = useRef(null);
 
   // Initialize Speech Synthesis & Speech Recognition
   useEffect(() => {
@@ -41,8 +42,15 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
         handleAskVoiceAssistant(transcript);
       };
 
-      recognition.onerror = () => setIsListening(false);
-      recognition.onend = () => setIsListening(false);
+      recognition.onerror = (e) => {
+        console.warn("Speech recognition error:", e);
+        setIsListening(false);
+      };
+      
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
       recognitionRef.current = recognition;
     }
 
@@ -53,13 +61,21 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
 
   // Update default audio text when scriptText prop changes
   useEffect(() => {
-    if (scriptText && !detailedSolution) {
+    if (scriptText && chatLog.length === 0) {
       setSpokenAudioText(scriptText);
       const detected = detectLanguage(scriptText);
       setDetectedLanguage(detected);
       setSpeechLangCode(getLangSpeechCode(detected));
+      setLangLabel(getLangLabel(detected));
     }
   }, [scriptText]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatLog, loadingAi]);
 
   const stopAudio = () => {
     if (synthRef.current) synthRef.current.cancel();
@@ -77,12 +93,11 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
       setIsListening(false);
     } else {
       if (!recognitionRef.current) {
-        alert("Microphone recognition requires Google Chrome or Microsoft Edge.");
+        alert("Microphone voice recognition is supported on Google Chrome and Microsoft Edge.");
         return;
       }
       stopAudio();
-      // Listen without restricting language - auto-detects dialect
-      recognitionRef.current.lang = 'te-IN';
+      recognitionRef.current.lang = 'te-IN'; // Default dialect
       try {
         recognitionRef.current.start();
         setIsListening(true);
@@ -92,7 +107,7 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
     }
   };
 
-  // Query Gemini Agronomist & Speak response
+  // Ask Gemini and speak output
   const handleAskVoiceAssistant = async (textToAsk = null) => {
     const query = textToAsk || userQuery;
     if (!query.trim()) return;
@@ -100,7 +115,18 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
     setUserQuery('');
     stopAudio();
     setLoadingAi(true);
-    setShowDetailedBox(true);
+
+    const detected = detectLanguage(query);
+    const label = getLangLabel(detected);
+
+    // Append user query to chat immediately
+    const userMessage = {
+      sender: 'user',
+      text: query,
+      lang: detected,
+      label: label
+    };
+    setChatLog(prev => [...prev, userMessage]);
 
     try {
       const result = await askGeminiVoiceAdvisor({
@@ -116,17 +142,27 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
         }
       });
 
-      setDetailedSolution(result.detailed_solution);
+      const aiMessage = {
+        sender: 'ai',
+        detailed: result.detailed_solution,
+        spoken: result.spoken_script,
+        lang: result.detected_lang,
+        code: result.speechCode,
+        label: result.langLabel
+      };
+
+      setChatLog(prev => [...prev, aiMessage]);
       setSpokenAudioText(result.spoken_script);
       setDetectedLanguage(result.detected_lang);
       setSpeechLangCode(result.speechCode);
+      setLangLabel(result.langLabel);
       setLoadingAi(false);
 
-      // Read out the exact solution aloud in the language spoken!
+      // Immediately read aloud the exact solution in the user's language!
       speakAloud(result.spoken_script, result.speechCode, result.detected_lang);
     } catch (e) {
       setLoadingAi(false);
-      console.error(e);
+      console.error("AI Advisor error:", e);
     }
   };
 
@@ -156,6 +192,8 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
         utterance.onend = () => setIsPlaying(false);
         utterance.onerror = () => fallbackAudioStream(text, langCode);
 
+        // Keep reference to prevent GC bug in Chromium
+        window._activeUtterance = utterance;
         synthRef.current.speak(utterance);
         return;
       } catch (e) {
@@ -166,16 +204,18 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
     }
   };
 
+  // Google TTS high-quality regional audio fallback
   const fallbackAudioStream = (text, tl) => {
     try {
-      const sanitized = encodeURIComponent(text.slice(0, 190));
+      const sanitized = encodeURIComponent(text.slice(0, 195));
       const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${tl}&client=tw-ob&q=${sanitized}`;
       if (!audioElemRef.current) audioElemRef.current = new Audio();
       audioElemRef.current.src = url;
+      audioElemRef.current.playbackRate = speechRate;
       audioElemRef.current.onplay = () => setIsPlaying(true);
       audioElemRef.current.onended = () => setIsPlaying(false);
       audioElemRef.current.onerror = () => setIsPlaying(false);
-      audioElemRef.current.play().catch(() => setIsPlayingAudio(false));
+      audioElemRef.current.play().catch(() => setIsPlaying(false));
     } catch (e) {
       setIsPlaying(false);
     }
@@ -202,13 +242,13 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
       {/* Top Bar: Visualizer & Controls */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4">
         
-        {/* Left: Info */}
+        {/* Left: Info & Indicator */}
         <div className="flex items-center space-x-3 w-full md:w-auto">
           <div className="w-12 h-12 rounded-xl bg-emerald-600/50 border border-emerald-400/40 flex items-center justify-center flex-shrink-0 shadow-inner">
             <Volume2 className={`w-6 h-6 ${isPlaying ? 'text-amber-300 animate-pulse' : 'text-emerald-200'}`} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-bold text-emerald-100 flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                 AI Multilingual Voice Assistant
@@ -216,9 +256,9 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
               <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-bold tracking-wider ${
                 isPlaying ? 'bg-amber-400 text-slate-950 animate-pulse' : 'bg-emerald-700 text-emerald-200'
               }`}>
-                {isPlaying ? 'Speaking' : 'Voice Ready'}
+                {isPlaying ? `Speaking in ${langLabel.split(' ')[0]}` : 'Voice Ready'}
               </span>
-              <span className="text-[10px] bg-emerald-800/80 px-2 py-0.5 rounded-full text-emerald-300 border border-emerald-600/50">
+              <span className="text-[10px] bg-emerald-800/80 px-2.5 py-0.5 rounded-full text-emerald-300 border border-emerald-600/50 font-medium">
                 Auto-Detects Telugu, Hindi & English
               </span>
             </div>
@@ -255,7 +295,7 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
             title="Speak your question in Telugu, Hindi or English"
           >
             {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-            <span>{isListening ? 'Listening...' : 'Speak to AI (మాట్లాడండి)'}</span>
+            <span>{isListening ? 'Listening to voice...' : 'Speak to AI (మాట్లాడండి)'}</span>
           </button>
 
           {/* Speed Toggle */}
@@ -308,7 +348,7 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
           value={userQuery}
           onChange={(e) => setUserQuery(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAskVoiceAssistant()}
-          placeholder="Ask a question in Telugu, Hindi or English (e.g. వరి పంటకు వర్షం వల్ల నష్టమా? or Groundnut root rot)..."
+          placeholder="Ask any agricultural question in Telugu, Hindi or English (e.g. వేరుశెనగ తీసేసి మొక్కజొన్న వేస్తే లాభమా?)..."
           className="flex-1 bg-emerald-950/80 border border-emerald-700/60 rounded-xl px-3.5 py-2 text-xs text-white placeholder-emerald-300/60 focus:outline-none focus:ring-2 focus:ring-emerald-400"
         />
         <button
@@ -321,32 +361,55 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
         </button>
       </div>
 
-      {/* Detailed Agronomic Solution Box in Native Language */}
-      {showDetailedBox && (
-        <div className="mt-2 bg-slate-950/85 border border-emerald-500/50 rounded-xl p-4 text-xs animate-fadeIn">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2">
-            <span className="font-bold text-emerald-300 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              Detailed Agricultural Advisory ({detectedLanguage.toUpperCase()}):
-            </span>
-            <button
-              onClick={() => setShowDetailedBox(false)}
-              className="text-[10px] text-slate-400 hover:text-white"
-            >
-              Hide
-            </button>
-          </div>
+      {/* Dynamic Conversational Chat Log with Detailed Answers & Replay Voice Buttons */}
+      {chatLog.length > 0 && (
+        <div className="mt-2 bg-slate-950/90 border border-emerald-500/50 rounded-2xl p-4 text-xs space-y-4 max-h-[420px] overflow-y-auto animate-fadeIn">
+          {chatLog.map((msg, idx) => (
+            <div key={idx} className="space-y-2">
+              {msg.sender === 'user' ? (
+                <div className="flex items-start gap-2 bg-[#10241E] p-3 rounded-xl border border-emerald-700/50 ml-4 sm:ml-8">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-600/40 text-emerald-300 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                    👤
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
+                      You Asked ({msg.label}):
+                    </span>
+                    <p className="text-white font-medium text-xs mt-0.5">{msg.text}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-[#091512] p-4 rounded-xl border border-slate-800 text-slate-100 mr-4 sm:mr-8 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className="text-emerald-400 font-bold flex items-center gap-1.5 text-xs">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      Gemini Agricultural Advisory ({msg.label}):
+                    </span>
+                    <button
+                      onClick={() => speakAloud(msg.spoken, msg.code, msg.lang)}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 rounded-lg text-[10px] font-bold transition"
+                    >
+                      <Volume2 className="w-3 h-3" />
+                      <span>చదవండి / Listen</span>
+                    </button>
+                  </div>
 
-          {loadingAi ? (
-            <div className="flex items-center gap-2 text-emerald-300 py-3">
-              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-              <span>Gemini is analyzing your crop, soil, and climate to write a detailed solution...</span>
+                  <div className="whitespace-pre-line text-xs text-slate-200 leading-relaxed font-sans">
+                    {msg.detailed}
+                  </div>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="whitespace-pre-line text-slate-100 leading-relaxed font-sans">
-              {detailedSolution}
+          ))}
+
+          {loadingAi && (
+            <div className="flex items-center gap-2 text-emerald-300 py-3 bg-[#091512] p-3 rounded-xl border border-slate-800">
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+              <span>Gemini is diagnosing your question and preparing full detailed solution in your language...</span>
             </div>
           )}
+          
+          <div ref={chatBottomRef} />
         </div>
       )}
 
