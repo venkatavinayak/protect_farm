@@ -1,42 +1,46 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Sprout, Calendar, Tag, Check, AlertCircle } from 'lucide-react';
+import { ALL_CROPS } from '../data/cropsData';
+import { Plus, Sprout, Calendar, Tag, Check, AlertCircle, Trash2 } from 'lucide-react';
 
-const COMMON_CROPS = [
-  { name: 'Paddy / Rice', category: 'wetland', defaultVariety: 'BPT 5204 (Samba)', waterNeed: 'High (Tolerates standing water)' },
-  { name: 'Groundnut', category: 'arid_pulse', defaultVariety: 'Kadiri-6 (K-6)', waterNeed: 'Low (Prone to root rot in waterlogging)' },
-  { name: 'Cotton', category: 'cash_crop', defaultVariety: 'Bt-Cotton II', waterNeed: 'Medium (Boll rot during heavy rain)' },
-  { name: 'Tomato', category: 'horticulture', defaultVariety: 'Arka Rakshak', waterNeed: 'Medium (Damping off & blossom drop)' },
-  { name: 'Banana', category: 'tall_stalk', defaultVariety: 'Grand Naine (G9)', waterNeed: 'High (Critical wind lodging risk)' },
-  { name: 'Sugarcane', category: 'tall_stalk', defaultVariety: 'Co 86032', waterNeed: 'High (Lodging in gale storms)' },
-  { name: 'Chickpea', category: 'arid_pulse', defaultVariety: 'JG 11', waterNeed: 'Very Low (Root suffocation in rain)' },
+const GROWTH_STAGES = [
+  'Sowing / Seedling',
+  'Vegetative Stage',
+  'Tillering Stage',
+  'Flowering / Reproductive',
+  'Grain / Pod Formation',
+  'Maturity / Harvesting'
 ];
 
-const GROWTH_STAGES = ['Seedling', 'Vegetative', 'Flowering / Tillering', 'Pod / Grain Formation', 'Maturity / Harvesting'];
-
 export default function PlantedCropsManager() {
-  const { plantedCrops, addCrop } = useAuth();
+  const { activeFarm, plantedCrops, addCrop } = useAuth();
   const [showAddForm, setShowAddForm] = useState(false);
   
-  const [selectedCrop, setSelectedCrop] = useState(COMMON_CROPS[0]);
-  const [variety, setVariety] = useState(COMMON_CROPS[0].defaultVariety);
+  const [selectedCropId, setSelectedCropId] = useState(ALL_CROPS[0].id);
+  const [variety, setVariety] = useState(ALL_CROPS[0].varieties[0]);
   const [sowingDate, setSowingDate] = useState(new Date().toISOString().split('T')[0]);
-  const [growthStage, setGrowthStage] = useState('Vegetative');
+  const [growthStage, setGrowthStage] = useState('Vegetative Stage');
+  const [acres, setAcres] = useState(2.0);
 
-  const handleCropSelectChange = (e) => {
-    const found = COMMON_CROPS.find(c => c.name === e.target.value) || COMMON_CROPS[0];
-    setSelectedCrop(found);
-    setVariety(found.defaultVariety);
+  const currentCrop = ALL_CROPS.find(c => c.id === selectedCropId) || ALL_CROPS[0];
+
+  const handleCropChange = (cropId) => {
+    setSelectedCropId(cropId);
+    const found = ALL_CROPS.find(c => c.id === cropId);
+    if (found && found.varieties.length > 0) {
+      setVariety(found.varieties[0]);
+    }
   };
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
     addCrop({
-      crop_name: selectedCrop.name.split(' / ')[0],
-      crop_category: selectedCrop.category,
+      crop_name: currentCrop.name,
+      category: currentCrop.category,
       variety: variety,
       sowing_date: sowingDate,
-      growth_stage: growthStage
+      growth_stage: growthStage,
+      acres: parseFloat(acres) || 1.0
     });
     setShowAddForm(false);
   };
@@ -48,10 +52,10 @@ export default function PlantedCropsManager() {
         <div>
           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Sprout className="w-5 h-5 text-emerald-700" />
-            My Planted Crops & Phenological Stage
+            Crops Planted on {activeFarm.farm_name}
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            The AI cross-references weather alerts strictly against the water needs of these crops.
+            The AI climate defense model cross-references live rainfall against the cellular water needs of these crops.
           </p>
         </div>
 
@@ -60,120 +64,156 @@ export default function PlantedCropsManager() {
           className="flex items-center space-x-1.5 bg-emerald-700 hover:bg-emerald-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs"
         >
           <Plus className="w-4 h-4" />
-          <span>Add New Crop</span>
+          <span>{showAddForm ? 'Cancel' : 'Add Crop'}</span>
         </button>
       </div>
 
-      {/* Add Crop Modal/Inline Form */}
+      {/* Add Crop Inline Form */}
       {showAddForm && (
-        <form onSubmit={handleFormSubmit} className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-4 sm:p-5 space-y-4 text-xs">
-          <h4 className="font-bold text-emerald-950 text-sm">Register Planted Crop</h4>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <form onSubmit={handleFormSubmit} className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="font-bold text-xs uppercase text-emerald-900 tracking-wider">
+            Assign Crop & Seed Variety to {activeFarm.farm_name}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Crop Type:</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Select Crop (All Indian Varieties) *
+              </label>
               <select
-                value={selectedCrop.name}
-                onChange={handleCropSelectChange}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                value={selectedCropId}
+                onChange={(e) => handleCropChange(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
               >
-                {COMMON_CROPS.map(c => (
-                  <option key={c.name} value={c.name}>{c.name}</option>
+                {ALL_CROPS.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.telugu} • {c.category})
+                  </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Variety / Hybrid:</label>
-              <input
-                type="text"
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Certified Seed Variety / Hybrid *
+              </label>
+              <select
                 value={variety}
                 onChange={(e) => setVariety(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder="e.g. BPT 5204"
-                required
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+              >
+                {currentCrop.varieties.map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Growth Stage *
+              </label>
+              <select
+                value={growthStage}
+                onChange={(e) => setGrowthStage(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+              >
+                {GROWTH_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Cultivated Area (Acres)
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={acres}
+                onChange={(e) => setAcres(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Sowing Date:</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Sowing Date
+              </label>
               <input
                 type="date"
                 value={sowingDate}
                 onChange={(e) => setSowingDate(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                required
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Current Growth Stage:</label>
-              <select
-                value={growthStage}
-                onChange={(e) => setGrowthStage(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              >
-                {GROWTH_STAGES.map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-[11px] text-emerald-800 italic">
-              Water Requirement: {selectedCrop.waterNeed}
-            </span>
-            <div className="flex space-x-2">
-              <button
-                type="button"
-                onClick={() => setShowAddForm(false)}
-                className="px-3.5 py-2 bg-slate-200 text-slate-700 font-bold rounded-xl"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-xs"
-              >
-                Save Planted Crop
-              </button>
-            </div>
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition shadow-sm"
+            >
+              Confirm & Monitor Crop
+            </button>
           </div>
         </form>
       )}
 
-      {/* Active Crops Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-        {plantedCrops.map((crop) => (
-          <div key={crop.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <h4 className="font-bold text-sm text-slate-900">{crop.crop_name}</h4>
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                  Active
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">Variety: {crop.variety}</p>
-              
-              <div className="mt-3 space-y-1 text-xs text-slate-600">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Stage:</span>
-                  <span className="font-semibold text-slate-800">{crop.growth_stage}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Sown On:</span>
-                  <span className="font-semibold text-slate-800">{crop.sowing_date}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-3 pt-2 border-t border-slate-200/60 text-[11px] text-slate-500 flex items-center gap-1">
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Real-Time Weather Monitored</span>
-            </div>
+      {/* Planted Crops Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {plantedCrops.length === 0 ? (
+          <div className="col-span-2 text-center py-6 text-slate-400 text-xs">
+            No crops registered yet on this land. Click "Add Crop" above to begin monitoring.
           </div>
-        ))}
+        ) : (
+          plantedCrops.map((crop, idx) => {
+            const isWetland = crop.category === 'wetland' || crop.crop_name.toLowerCase().includes('paddy');
+            return (
+              <div
+                key={crop.id || idx}
+                className="border border-slate-200 rounded-2xl p-4 bg-slate-50/60 hover:bg-white hover:border-emerald-300 transition shadow-xs flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                        <span className="text-base">🌱</span> {crop.crop_name}
+                      </span>
+                      <span className="text-xs text-emerald-800 font-medium block mt-0.5">
+                        Variety: {crop.variety || 'Certified Hybrid'}
+                      </span>
+                    </div>
+
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                      isWetland ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-900'
+                    }`}>
+                      {isWetland ? 'Wetland Hydrophyte' : 'Arid Aerated'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+                    <span className="font-semibold text-slate-800">Stage:</span>
+                    <span className="bg-slate-200/80 px-2 py-0.5 rounded-lg text-slate-700 font-medium text-[11px]">
+                      {crop.growth_stage || 'Flowering Stage'}
+                    </span>
+                    {crop.acres && (
+                      <span className="text-slate-500 font-medium text-[11px]">• {crop.acres} Acres</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2.5 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500">
+                  <span className="flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    Real-time Threat Monitoring Active
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
     </div>
