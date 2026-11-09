@@ -10,6 +10,7 @@ import XAIMitigationModal from './components/XAIMitigationModal';
 import CropAdvisorStudio from './components/CropAdvisorStudio';
 import PlantedCropsManager from './components/PlantedCropsManager';
 import BioMarketplace from './components/BioMarketplace';
+import AgriGuardDashboard from './components/AgriGuardDashboard';
 import { Shield, Sparkles, MapPin, ShoppingBag, Sprout, Loader2 } from 'lucide-react';
 import { getGeminiCropThreatPrediction } from './services/geminiService';
 
@@ -24,6 +25,7 @@ export default function App() {
     completeSetup 
   } = useAuth();
   
+  const [viewMode, setViewMode] = useState('agriguard'); // 'agriguard' (Image 2 dashboard) or 'classic'
   const [activeTab, setActiveTab] = useState('threats'); // 'threats', 'crops', 'advisor', 'biostore'
   const [threatReport, setThreatReport] = useState(null);
   const [selectedCropXAI, setSelectedCropXAI] = useState(null);
@@ -163,7 +165,13 @@ export default function App() {
     return <FarmOnboardingScreen onComplete={(setup) => completeSetup(setup)} />;
   }
 
-  // 4. Authenticated & Setup Complete -> Classic Clean Emerald Dashboard UI
+  // 4. Authenticated & Setup Complete
+  // Mode A: AgriGuard AI Unified Radar Dashboard (matching Image 2)
+  if (viewMode === 'agriguard') {
+    return <AgriGuardDashboard onToggleView={() => setViewMode('classic')} />;
+  }
+
+  // Mode B: Classic Tabbed Farm Studio UI
   const dangerousCrop = threatReport?.crop_assessments?.find(c => c.is_dangerous);
   const topAudioScript = dangerousCrop 
     ? (dangerousCrop.audio_text_script || dangerousCrop.summary_message)
@@ -171,7 +179,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <Navbar />
+      <Navbar onToggleView={() => setViewMode('agriguard')} />
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 w-full">
         

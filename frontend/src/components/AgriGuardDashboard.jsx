@@ -29,8 +29,9 @@ import MandiPricesModal from './MandiPricesModal';
 import GovernmentSubsidiesModal from './GovernmentSubsidiesModal';
 import AddFarmModal from './AddFarmModal';
 import { getGeminiCropThreatPrediction, askGeminiVoiceAdvisor, detectLanguage, getLangSpeechCode } from '../services/geminiService';
+import { playNativeSpeech, stopNativeSpeech, isNativeSpeechPlaying } from '../services/nativeTtsPlayer';
 
-export default function AgriGuardDashboard() {
+export default function AgriGuardDashboard({ onToggleView }) {
   const { farmer, farms, activeFarm, activeFarmId, switchFarm, plantedCrops } = useAuth();
 
   // Modals
@@ -190,6 +191,10 @@ export default function AgriGuardDashboard() {
       const marker = L.marker([initialLat, initialLng], { icon: pinIcon }).addTo(map);
       markerRef.current = marker;
 
+      setTimeout(() => {
+        try { map.invalidateSize(); } catch (e) {}
+      }, 300);
+
       mapInstanceRef.current = { map, satelliteTiles, farmPolygon };
     } else {
       // Re-center when active farm changes
@@ -230,11 +235,7 @@ export default function AgriGuardDashboard() {
   }, []);
 
   const stopAudio = () => {
-    if (synthRef.current) synthRef.current.cancel();
-    if (audioElemRef.current) {
-      audioElemRef.current.pause();
-      audioElemRef.current.currentTime = 0;
-    }
+    stopNativeSpeech();
     setIsPlayingAudio(false);
   };
 
@@ -298,62 +299,15 @@ export default function AgriGuardDashboard() {
       setChatHistory(prev => [...prev, aiMsg]);
       setAssistantLoading(false);
 
-      // Immediately read aloud the solution in the detected language!
-      readAloudText(result.spoken_script, result.speechCode, result.detected_lang);
+      // DIRECT REACTION: Immediately and automatically speak aloud the answer in native Telugu/Hindi!
+      // No read button required!
+      playNativeSpeech(result.spoken_script, result.detected_lang, {
+        onStart: () => setIsPlayingAudio(true),
+        onEnd: () => setIsPlayingAudio(false)
+      });
     } catch (err) {
       setAssistantLoading(false);
       console.error(err);
-    }
-  };
-
-  // Read Aloud Text using Web Speech API with Google TTS Audio fallback
-  const readAloudText = (text, speechCode, langCode) => {
-    if (!text) return;
-    stopAudio();
-
-    if (synthRef.current) {
-      try {
-        synthRef.current.resume();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.95;
-
-        const voices = synthRef.current.getVoices();
-        const matchingVoice = voices.find(v => v.lang.toLowerCase().replace('_', '-') === speechCode.toLowerCase())
-          || voices.find(v => v.lang.toLowerCase().startsWith(langCode));
-
-        if (matchingVoice) {
-          utterance.voice = matchingVoice;
-          utterance.lang = matchingVoice.lang;
-        } else {
-          utterance.lang = speechCode;
-        }
-
-        utterance.onstart = () => setIsPlayingAudio(true);
-        utterance.onend = () => setIsPlayingAudio(false);
-        utterance.onerror = () => fallbackAudioStream(text, langCode);
-
-        synthRef.current.speak(utterance);
-        return;
-      } catch (e) {
-        fallbackAudioStream(text, langCode);
-      }
-    } else {
-      fallbackAudioStream(text, langCode);
-    }
-  };
-
-  const fallbackAudioStream = (text, tl) => {
-    try {
-      const sanitized = encodeURIComponent(text.slice(0, 190));
-      const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${tl}&client=tw-ob&q=${sanitized}`;
-      if (!audioElemRef.current) audioElemRef.current = new Audio();
-      audioElemRef.current.src = url;
-      audioElemRef.current.onplay = () => setIsPlayingAudio(true);
-      audioElemRef.current.onended = () => setIsPlayingAudio(false);
-      audioElemRef.current.onerror = () => setIsPlayingAudio(false);
-      audioElemRef.current.play().catch(() => setIsPlayingAudio(false));
-    } catch (e) {
-      setIsPlayingAudio(false);
     }
   };
 
@@ -366,7 +320,10 @@ export default function AgriGuardDashboard() {
         || threatAssessment?.spoken_advisory_hindi 
         || threatAssessment?.spoken_advisory_english 
         || "Critical weather alert for your farmland. Heavy rain and cyclone danger detected.";
-      readAloudText(script, 'te-IN', 'te');
+      playNativeSpeech(script, 'te', {
+        onStart: () => setIsPlayingAudio(true),
+        onEnd: () => setIsPlayingAudio(false)
+      });
     }
   };
 
@@ -443,6 +400,17 @@ export default function AgriGuardDashboard() {
         {/* Real-Time Live Clock & Right Actions */}
         <div className="flex items-center space-x-3 sm:space-x-4">
           
+          {/* Toggle to Classic Studio View */}
+          {onToggleView && (
+            <button
+              onClick={onToggleView}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#12221D] hover:bg-[#182F27] text-emerald-300 border border-emerald-800/60 transition shadow-sm"
+              title="Switch to Classic Farm Studio Tabs"
+            >
+              <span>🌿 Classic View</span>
+            </button>
+          )}
+
           {/* Live Date & Time Display */}
           <div className="hidden lg:flex items-center space-x-2 bg-[#12221D] px-3 py-1.5 rounded-xl border border-emerald-800/50 text-xs text-emerald-200 font-mono">
             <Clock className="w-3.5 h-3.5 text-emerald-400" />

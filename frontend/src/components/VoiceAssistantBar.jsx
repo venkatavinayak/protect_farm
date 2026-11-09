@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Volume2, VolumeX, Play, Pause, RotateCcw, Sparkles, Mic, MicOff, Send, Loader2, MessageSquare, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { askGeminiVoiceAdvisor, detectLanguage, getLangSpeechCode, getLangLabel } from '../services/geminiService';
+import { playNativeSpeech, stopNativeSpeech, isNativeSpeechPlaying } from '../services/nativeTtsPlayer';
 
 export default function VoiceAssistantBar({ scriptText, currentThreat }) {
   const { activeFarm, plantedCrops, farmer } = useAuth();
@@ -78,11 +79,7 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
   }, [chatLog, loadingAi]);
 
   const stopAudio = () => {
-    if (synthRef.current) synthRef.current.cancel();
-    if (audioElemRef.current) {
-      audioElemRef.current.pause();
-      audioElemRef.current.currentTime = 0;
-    }
+    stopNativeSpeech();
     setIsPlaying(false);
   };
 
@@ -158,66 +155,15 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
       setLangLabel(result.langLabel);
       setLoadingAi(false);
 
-      // Immediately read aloud the exact solution in the user's language!
-      speakAloud(result.spoken_script, result.speechCode, result.detected_lang);
+      // DIRECT REACTION: Immediately and automatically read aloud the exact solution in the user's native language!
+      // No read button click needed!
+      playNativeSpeech(result.spoken_script, result.detected_lang, {
+        onStart: () => setIsPlaying(true),
+        onEnd: () => setIsPlaying(false)
+      });
     } catch (e) {
       setLoadingAi(false);
       console.error("AI Advisor error:", e);
-    }
-  };
-
-  // Speak Aloud in detected language
-  const speakAloud = (text, speechCode, langCode) => {
-    if (!text) return;
-    stopAudio();
-
-    if (synthRef.current) {
-      try {
-        synthRef.current.resume();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = speechRate;
-
-        const voices = synthRef.current.getVoices();
-        const matchingVoice = voices.find(v => v.lang.toLowerCase().replace('_', '-') === speechCode.toLowerCase())
-          || voices.find(v => v.lang.toLowerCase().startsWith(langCode));
-
-        if (matchingVoice) {
-          utterance.voice = matchingVoice;
-          utterance.lang = matchingVoice.lang;
-        } else {
-          utterance.lang = speechCode;
-        }
-
-        utterance.onstart = () => setIsPlaying(true);
-        utterance.onend = () => setIsPlaying(false);
-        utterance.onerror = () => fallbackAudioStream(text, langCode);
-
-        // Keep reference to prevent GC bug in Chromium
-        window._activeUtterance = utterance;
-        synthRef.current.speak(utterance);
-        return;
-      } catch (e) {
-        fallbackAudioStream(text, langCode);
-      }
-    } else {
-      fallbackAudioStream(text, langCode);
-    }
-  };
-
-  // Google TTS high-quality regional audio fallback
-  const fallbackAudioStream = (text, tl) => {
-    try {
-      const sanitized = encodeURIComponent(text.slice(0, 195));
-      const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${tl}&client=tw-ob&q=${sanitized}`;
-      if (!audioElemRef.current) audioElemRef.current = new Audio();
-      audioElemRef.current.src = url;
-      audioElemRef.current.playbackRate = speechRate;
-      audioElemRef.current.onplay = () => setIsPlaying(true);
-      audioElemRef.current.onended = () => setIsPlaying(false);
-      audioElemRef.current.onerror = () => setIsPlaying(false);
-      audioElemRef.current.play().catch(() => setIsPlaying(false));
-    } catch (e) {
-      setIsPlaying(false);
     }
   };
 
@@ -225,14 +171,20 @@ export default function VoiceAssistantBar({ scriptText, currentThreat }) {
     if (isPlaying) {
       stopAudio();
     } else {
-      speakAloud(spokenAudioText, speechLangCode, detectedLanguage);
+      playNativeSpeech(spokenAudioText, detectedLanguage, {
+        onStart: () => setIsPlaying(true),
+        onEnd: () => setIsPlaying(false)
+      });
     }
   };
 
   const handleReplay = () => {
     stopAudio();
     setTimeout(() => {
-      speakAloud(spokenAudioText, speechLangCode, detectedLanguage);
+      playNativeSpeech(spokenAudioText, detectedLanguage, {
+        onStart: () => setIsPlaying(true),
+        onEnd: () => setIsPlaying(false)
+      });
     }, 150);
   };
 

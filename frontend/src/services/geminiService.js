@@ -57,7 +57,7 @@ export function getLangLabel(langCode) {
 }
 
 // Low-level Gemini content generation
-async function callGemini(promptText, maxTokens = 1200) {
+export async function callGemini(promptText, maxTokens = 1200) {
   for (const model of GEMINI_MODELS) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
@@ -92,6 +92,7 @@ async function callGemini(promptText, maxTokens = 1200) {
 /**
  * Bi-directional Multilingual Voice Chat Assistant using Gemini
  * Detects the farmer's language automatically and writes a direct, comprehensive solution.
+ * Returns both a detailed Markdown written solution and a clean conversational spoken script.
  */
 export async function askGeminiVoiceAdvisor({
   userQuery,
@@ -115,53 +116,68 @@ FARM CONTEXT:
 
 CRITICAL INSTRUCTIONS:
 1. Detect that the user asked in ${langLabel}.
-2. You MUST write your response directly in ${langLabel} (use natural, authentic regional script).
-3. Directly answer the EXACT question they asked (e.g. crop economics, disease diagnosis, crop switching, fertilizer, or weather risk). Give real figures (rupees ₹, quintals, seed varieties, irrigation).
-4. Structure your response clearly with:
-   - Direct Agronomic Answer & Economics
-   - Specific Field Steps (1, 2, 3)
-   - Final Actionable Recommendation
-5. Do NOT output JSON. Write clean, readable Markdown text directly.`;
+2. You MUST write your response directly in ${langLabel} (use authentic, natural regional script).
+3. Directly answer the EXACT question they asked (crop economics, switching crops, fertilizer, pest control, or weather threat). Give actual figures in rupees ₹, quintals, seed costs, water needs, and clear guidance.
 
-  const rawAnswer = await callGemini(prompt, 1400);
+FORMAT YOUR RESPONSE EXACTLY AS:
+===SPOKEN_ADVISORY===
+[Write 3 to 4 spoken sentences in natural conversational ${langLabel} answering the farmer directly. This text will be read aloud immediately by the voice assistant so the farmer hears the direct financial & farming answer out loud.]
+===DETAILED_SOLUTION===
+[Write the detailed Markdown explanation with bold headers, bullet points, rupee figures, and 3 clear actionable steps in ${langLabel}.]`;
 
-  if (rawAnswer && rawAnswer.length > 20) {
-    // Generate a clean spoken script from the answer
-    // Remove markdown symbols (*, #, _, `) for natural speech
-    const cleanForSpeech = rawAnswer
-      .replace(/[#*`_~]/g, '')
-      .replace(/\n+/g, '. ')
-      .trim();
+  try {
+    const rawAnswer = await callGemini(prompt, 1400);
 
-    // Take the opening summary sentences (first ~250 chars) for crisp audio readout
-    const firstSentences = cleanForSpeech.split('.').slice(0, 3).join('. ') + '.';
+    if (rawAnswer && rawAnswer.length > 20) {
+      let spoken = '';
+      let detailed = '';
 
-    return {
-      detected_lang: detectedLang,
-      speechCode: speechCode,
-      langLabel: langLabel,
-      detailed_solution: rawAnswer,
-      spoken_script: firstSentences.length > 20 ? firstSentences : cleanForSpeech.slice(0, 250)
-    };
+      if (rawAnswer.includes('===SPOKEN_ADVISORY===') && rawAnswer.includes('===DETAILED_SOLUTION===')) {
+        const parts = rawAnswer.split('===DETAILED_SOLUTION===');
+        spoken = parts[0].replace('===SPOKEN_ADVISORY===', '').trim();
+        detailed = parts[1].trim();
+      } else {
+        // Fallback split if markers differed slightly
+        detailed = rawAnswer.trim();
+        const cleanForSpeech = rawAnswer
+          .replace(/[#*`_~>\[\]]/g, '')
+          .replace(/\n+/g, ' ')
+          .trim();
+        spoken = cleanForSpeech.slice(0, 320);
+      }
+
+      // Ensure spoken is clean of markdown symbols
+      spoken = spoken.replace(/[#*`_~>\[\]\(\)]/g, '').replace(/\s+/g, ' ').trim();
+
+      return {
+        detected_lang: detectedLang,
+        speechCode: speechCode,
+        langLabel: langLabel,
+        detailed_solution: detailed || rawAnswer,
+        spoken_script: spoken
+      };
+    }
+  } catch (err) {
+    console.error("Gemini Voice Advisor call failed:", err);
   }
 
-  // Fallback if network blocked
+  // High-quality contextual regional fallbacks if offline
   const fallbackSolutions = {
     te: {
-      detailed: `నమస్కారం రైతు సోదరులకు. మీ ప్రశ్నకు విశ్లేషణ:\n\n1. **పంట మార్పిడి మరియు ఖర్చుల తేడా:** వేరుశనగ పంట ఇప్పటికే పూత దశలో ఉంటే దాన్ని తీసేయడం వల్ల పెట్టిన పెట్టుబడి వృధా అవుతుంది. కొత్తగా మొక్కజొన్న వేస్తే విత్తనాలు, దుక్కి, ఎరువులకు ఎకరాకు ₹12,000 నుండి ₹15,000 అదనపు ఖర్చు అవుతుంది.\n2. **నీటి అవసరం:** మొక్కజొన్నకు ఎక్కువ నీరు అవసరం. మీ బోరు బావుల్లో నీరు పుష్కలంగా ఉంటేనే రబీలో మొక్కజొన్న లాభదాయకం.\n3. **సలహా:** ప్రస్తుత వేరుశనగ పంటను రక్షించుకోవడానికి నీరు నిల్వ ఉండకుండా చూసి, తగిన ఎరువులు అందిస్తే మంచి దిగుబడి వస్తుంది.`,
-      spoken: `రైతు సోదరులారా వినండి. పూత దశలో ఉన్న వేరుశనగను తీసేస్తే పెట్టుబడి నష్టం వస్తుంది. నీటి వనరులు సరిపోతేనే మొక్కజొన్న వేయండి.`
+      detailed: `### **రైతు సోదరులారా మీ ప్రశ్నకు విశ్లేషణ:**\n\n* **పంట మార్పిడి ఆర్థిక అంశాలు:** ప్రస్తుతం పూత దశలో ఉన్న పంటను తొలగించడం వల్ల ఇప్పటివరకు పెట్టిన దుక్కి, విత్తనాలు మరియు ఎరువుల పెట్టుబడి (ఎకరానికి ₹8,000 - ₹10,000) వృధా అవుతుంది.\n* **మొక్కజొన్న కొత్త పెట్టుబడి:** కొత్తగా మొక్కజొన్న వేస్తే విత్తనాలు, ఎరువులు మరియు సాగు కోసం ఎకరానికి అదనంగా ₹7,000 నుండి ₹9,000 ఖర్చు అవుతుంది.\n* **నీటి అవసరం:** మొక్కజొన్నకు ఎక్కువ తడులు అవసరం. తగినంత బోరు నీరు ఉంటేనే ఆలోచించాలి.\n\n### **సిఫార్సు చేసిన 3 చర్యలు:**\n1. ప్రస్తుత పంటను కొనసాగించండి, మధ్యలో తీసేస్తే పెట్టుబడి నష్టపోతారు.\n2. పూత దశలో తేమ నిల్వ ఉండకుండా నీటి పారుదల సక్రమంగా ఉండేలా చూడండి.\n3. తగినంత జిప్సమ్ లేదా సూక్ష్మ పోషకాలు అందించి అధిక దిగుబడి సాధించండి.`,
+      spoken: `రైతు సోదరులారా, ఇప్పుడు పూత దశలో ఉన్న పంటను తీసేస్తే ఎకరానికి ఎనిమిది వేల నుండి పది వేల రూపాయల వరకు పెట్టిన పెట్టుబడి నష్టపోతారు. కొత్తగా మొక్కజొన్న వేయడం ఇప్పుడు లాభదాయకం కాదు. దయచేసి ప్రస్తుత పంటనే కొనసాగించండి.`
     },
     hi: {
-      detailed: `किसान भाई, आपके सवाल का विश्लेषण:\n\n1. **लागत और मुनाफा:** यदि मूंगफली पहले से फूल आने की अवस्था में है, तो उसे हटाने से अब तक की लागत बर्बाद होगी। नई मक्का की बुवाई के लिए प्रति एकड़ ₹12,000-₹15,000 अतिरिक्त खर्च लगेगा।\n2. **जल आवश्यकता:** मक्का में अधिक पानी की आवश्यकता होती है। पर्याप्त सिंचाई होने पर ही रबी मक्का लगाएं।\n3. **सुझाव:** वर्तमान फसल को बनाए रखें और उचित देखभाल करें।`,
-      spoken: `किसान भाई, फूल अवस्था में मूंगफली हटाने से नुकसान होगा। पर्याप्त सिंचाई होने पर ही मक्का की बुवाई करें।`
+      detailed: `### **किसान भाई आपके सवाल का कृषि विश्लेषण:**\n\n* **लागत और नुकसान:** फूल आने की अवस्था में मूंगफली हटाने से अब तक की जुताई, बीज और खाद की लागत (₹8,000-₹10,000 प्रति एकड़) बर्बाद हो जाएगी।\n* **मक्का की नई लागत:** नई मक्का बोने पर बीज और जुताई का अतिरिक्त खर्च ₹7,000-₹9,000 प्रति एकड़ लगेगा।\n* **सिंचाई:** मक्का में अधिक पानी की आवश्यकता होती है।\n\n### **3 मुख्य सुझाव:**\n1. वर्तमान फसल को बनाए रखें और नुकसान से बचें।\n2. खेत में जलभराव न होने दें।\n3. पोटाश और सूक्ष्म पोषक तत्वों का प्रयोग कर अच्छी पैदावार लें।`,
+      spoken: `किसान भाई, फूल आने की अवस्था में फसल हटाने से प्रति एकड़ आठ से दस हजार रुपये का नुकसान होगा। नई मक्का लगाना अभी लाभदायक नहीं है, वर्तमान फसल को ही बनाए रखें।`
     },
     en: {
-      detailed: `Agricultural Advisory for your query:\n\n1. **Economic Comparison:** Replacing flowering Groundnut with Maize means forfeiting already invested seed and fertilizer costs. Sowing new Maize requires additional capital of ₹12,000-₹15,000 per acre for land prep, hybrid seed, and DAP/Urea.\n2. **Water Requirements:** Maize is a heavy feeder requiring regular irrigation at tasseling and silking, unlike drought-hardy legumes.\n3. **Recommendation:** Retain your existing crop to protect your investment unless severe root rot has already destroyed more than 60% of the stand.`,
-      spoken: `Advisory: Uprooting flowering Groundnut forfeits your initial investment. Only switch to Maize if you have assured tube-well irrigation.`
+      detailed: `### **Agricultural & Financial Advisory for Your Query:**\n\n* **Investment Loss:** Uprooting a crop in flowering stage forfeits all expenditure on land prep, certified seeds, and basal fertilizer (₹8,000-₹10,000 per acre).\n* **Maize Sowing Cost:** Establishing fresh maize requires an additional capital of ₹7,000-₹9,000 per acre for hybrid seeds, nitrogen, and secondary tillage.\n* **Water Demand:** Maize requires significantly higher irrigation volumes than legumes.\n\n### **Recommended Actions:**\n1. Maintain your standing crop to safeguard invested capital.\n2. Ensure root aeration and avoid water stagnation.\n3. Apply targeted nutrition to optimize yield.`,
+      spoken: `Advisory: Uprooting your crop at flowering forfeits invested capital of eight to ten thousand rupees per acre. Switching to maize now is financially inadvisable; retain your current crop.`
     }
   };
 
-  const fb = fallbackSolutions[detectedLang] || fallbackSolutions.en;
+  const fb = fallbackSolutions[detectedLang] || fallbackSolutions.te;
 
   return {
     detected_lang: detectedLang,
@@ -203,13 +219,13 @@ Return ONLY valid JSON with keys:
   "mitigation_step_1": "Urgent immediate action",
   "mitigation_step_2": "Field management action during rain",
   "mitigation_step_3": "Post-event organic treatment",
-  "spoken_advisory_telugu": "Clear spoken advisory in Telugu",
-  "spoken_advisory_hindi": "Clear spoken advisory in Hindi",
-  "spoken_advisory_english": "Clear spoken advisory in English"
+  "spoken_advisory_telugu": "Clear spoken advisory in Telugu (3-4 natural spoken sentences)",
+  "spoken_advisory_hindi": "Clear spoken advisory in Hindi (3-4 natural spoken sentences)",
+  "spoken_advisory_english": "Clear spoken advisory in English (3-4 natural spoken sentences)"
 }`;
 
   try {
-    const rawResult = await callGemini(prompt, 800);
+    const rawResult = await callGemini(prompt, 900);
     if (rawResult) {
       const cleanJson = rawResult.replace(/```json/g, '').replace(/```/g, '').trim();
       return JSON.parse(cleanJson);
@@ -218,26 +234,33 @@ Return ONLY valid JSON with keys:
     console.error("Gemini Threat Prediction error:", err);
   }
 
+  // Dynamic fallback
   const isWetland = cropName.toLowerCase().includes('paddy') || cropName.toLowerCase().includes('rice');
   return {
-    threat_level: isWetland ? "BENEFICIAL" : "WARNING",
+    threat_level: isWetland ? "BENEFICIAL" : "CRITICAL",
     threat_title: isWetland 
-      ? `Moderate Rain (${rainfallMm}mm) Beneficial for ${cropName}` 
-      : `High Rain Alert: Severe Root Hypoxia & Rot Risk for ${cropName}`,
+      ? `Moderate Rain (${rainfallMm}mm) Recharges ${cropName}` 
+      : `CRITICAL ALERT: Heavy Rainfall & Cyclone Danger for ${cropName}`,
     biological_causation: isWetland
-      ? `${cropName} possesses aerenchyma tissue enabling survival in standing water. ${rainfallMm}mm rain recharges soil water profile and saves motor electricity.`
-      : `${cropName} in ${soilType} cannot tolerate stagnant water. ${rainfallMm}mm rainfall saturates pore spaces, starving roots of oxygen within 8 hours and triggering fungal damping-off.`,
-    mitigation_step_1: isWetland ? "Turn off electric tube-wells immediately" : "Excavate 25cm peripheral drainage trenches to drain standing water",
-    mitigation_step_2: isWetland ? "Strengthen field bunds at 3-5 cm height" : "Halt walking on wet ridges to avoid root zone soil compaction",
-    mitigation_step_3: isWetland ? "Monitor for leaf folder and yellow stem borer" : "Drench collar region with Trichoderma viride (10g/L)",
-    spoken_advisory_telugu: isWetland 
-      ? `వరి పంటకు వర్షపాతం ఉపయోగకరం. బోర్ మోటార్లు ఆపండి.` 
-      : `వేరుశనగ పంటలో నీరు నిల్వ ఉంటే వేరుకుళ్ళు వస్తుంది. వెంటనే కాలువలు తీయండి.`,
+      ? `${cropName} is an aquatic crop thriving in saturated wetland conditions. ${rainfallMm}mm rainfall replenishes root zones without hypoxia.`
+      : `Excess rain (${rainfallMm}mm) on ${soilType || 'heavy soil'} saturates topsoil pores, causing root nodule hypoxia within 8 hours. High winds (${windKmh}km/h) during flowering stage induce severe lodging and flower drop.`,
+    mitigation_step_1: isWetland
+      ? "Turn off electric tube-well pump sets to conserve energy."
+      : "Excavate 25cm peripheral drainage trenches to evacuate standing runoff immediately.",
+    mitigation_step_2: isWetland
+      ? "Inspect and reinforce field perimeter bunds to maintain 3-5 cm water depth."
+      : "Halt all chemical spraying and avoid foot traffic on saturated field beds.",
+    mitigation_step_3: isWetland
+      ? "Apply bio-fertilizer Azospirillum once showers clear."
+      : "Soil drench with Trichoderma viride (10g/L water) post-rain to arrest fungal root rot.",
+    spoken_advisory_telugu: isWetland
+      ? `వరి పంటకు ప్రస్తుత వర్షపాతం ఉపయోగకరం. బోరు మోటార్లు ఆపివేయండి. కాలువల గట్లను బలోపేతం చేయండి.`
+      : `రైతు సోదరులారా వినండి. మీ పొలంలో వర్షపు నీరు నిల్వ ఉంటే వేరుకుళ్ళు వస్తుంది. వెంటనే కాలువలు తీసి నీటిని బయటకు పంపండి. వర్షం తగ్గిన తర్వాత ట్రైకోడెర్మా పిచికారీ చేయండి.`,
     spoken_advisory_hindi: isWetland
-      ? `धान की फसल के लिए यह बारिश फायदेमंद है। मोटर बंद करें।`
-      : `फसल में पानी भराव से जड़े सड़ सकती हैं। तुरंत जल निकासी नालियां बनाएं।`,
+      ? `धान की फसल के लिए यह बारिश फायदेमंद है। ट्यूबवेल की मोटर बंद रखें।`
+      : `किसान भाई, खेत में जलभराव तुरंत निकालें। भारी बारिश से मूंगफली में जड़ गलन का खतरा है।`,
     spoken_advisory_english: isWetland
-      ? `Rainfall is beneficial for Paddy. Turn off tube-wells.`
-      : `Warning: Excess rain causes root hypoxia. Excavate perimeter drainage trenches.`
+      ? `Rainfall is beneficial for your paddy crop. Turn off borewell motors.`
+      : `Critical warning for your crops. Excavate drainage channels immediately to prevent root rot.`
   };
 }

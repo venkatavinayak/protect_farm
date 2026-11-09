@@ -4,7 +4,7 @@ import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-reac
 import { ShieldCheck, MapPin, Clock, LogIn, Settings2, Sprout, ChevronDown, Plus, CheckCircle2 } from 'lucide-react';
 import AddFarmModal from './AddFarmModal';
 
-export default function Navbar() {
+export default function Navbar({ onToggleView }) {
   const { farmer, farms, activeFarm, activeFarmId, switchFarm, plantedCrops, reopenSetup } = useAuth();
   const [showAddFarm, setShowAddFarm] = useState(false);
   const [farmDropdownOpen, setFarmDropdownOpen] = useState(false);
@@ -120,6 +120,17 @@ export default function Navbar() {
               <span className="hidden sm:inline">{formattedDateTime}</span>
               <span className="sm:hidden">{currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
+
+            {/* Toggle to AgriGuard Radar Dashboard */}
+            {onToggleView && (
+              <button
+                onClick={onToggleView}
+                className="flex items-center space-x-1.5 bg-emerald-950/80 hover:bg-emerald-900 px-3 py-1.5 rounded-xl border border-emerald-600 text-xs font-bold text-amber-300 transition shadow-sm"
+                title="Switch to AgriGuard Radar Dashboard"
+              >
+                <span>⚡ AgriGuard Radar</span>
+              </button>
+            )}
 
             {/* Farm Setup Re-open button */}
             <button
