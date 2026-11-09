@@ -86,11 +86,11 @@ class XAIService:
 
         # 3. Try Google Gemini
         if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY != "mock_or_real_gemini_key":
-            for model in ["gemini-flash-latest", "gemini-2.5-flash-lite"]:
+            for model in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]:
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
                     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-                    async with httpx.AsyncClient(timeout=8.0) as client:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
                         res = await client.post(url, json=payload)
                         if res.status_code == 200:
                             data = res.json()
