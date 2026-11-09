@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import VoiceAssistantBar from './components/VoiceAssistantBar';
-import InteractiveFarmMap from './components/InteractiveFarmMap';
+import GoogleFarmMap from './components/GoogleFarmMap';
 import WeatherThreatBanner from './components/WeatherThreatBanner';
 import XAIMitigationModal from './components/XAIMitigationModal';
 import CropAdvisorStudio from './components/CropAdvisorStudio';
@@ -174,7 +174,7 @@ export default function App() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
-                <InteractiveFarmMap />
+                <GoogleFarmMap />
               </div>
               <div>
                 <PlantedCropsManager />
@@ -187,7 +187,7 @@ export default function App() {
         {activeTab === 'crops' && (
           <div className="space-y-6">
             <PlantedCropsManager />
-            <InteractiveFarmMap />
+            <GoogleFarmMap />
           </div>
         )}
 
@@ -195,7 +195,7 @@ export default function App() {
         {activeTab === 'advisor' && (
           <div className="space-y-6">
             <CropAdvisorStudio />
-            <InteractiveFarmMap />
+            <GoogleFarmMap />
           </div>
         )}
 

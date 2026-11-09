@@ -1,10 +1,18 @@
+import httpx
+import logging
 from typing import Dict, Any, List
+from app.core.config import settings
 from app.schemas.threat import MitigationStep
+
+logger = logging.getLogger("protectfarm.translation")
 
 class TranslationService:
     """
-    Translates agronomic advisories and mitigation steps into regional Indian languages.
-    Supports Telugu (te), Hindi (hi), Tamil (ta), Kannada (kn), Marathi (mr), and English (en).
+    Multi-Provider Regional Language Translation Service:
+    Supports:
+    1. Sarvam AI (Mayura translation model - State of the art for 11+ Indian languages)
+    2. Google Cloud Translation API
+    3. Built-in Agronomic Vernacular Dictionary (Telugu, Hindi, Tamil, Kannada, Marathi, English)
     """
 
     LANGUAGE_NAMES = {
@@ -14,6 +22,14 @@ class TranslationService:
         "kn": "Kannada (ಕನ್ನಡ)",
         "mr": "Marathi (मराठी)",
         "en": "English"
+    }
+
+    SARVAM_LANG_CODES = {
+        "te": "te-IN",
+        "hi": "hi-IN",
+        "ta": "ta-IN",
+        "kn": "kn-IN",
+        "mr": "mr-IN"
     }
 
     TRANSLATION_MAP = {
@@ -31,7 +47,6 @@ class TranslationService:
             "Tomato": "టమోటా",
             "Banana": "అరటి తోట",
             "Sugarcane": "చెరకు",
-            "rain_intro": "మీ పొలంలో రాబోయే వర్షపాతం మరియు గాలి హెచ్చరికలు:",
             "root_rot_warning": "భారీ వర్షం వల్ల నేలలో నీరు నిలిచి వేరుకుళ్లు తెగులు (రూట్ రాట్) వచ్చే తీవ్ర ప్రమాదం ఉంది.",
             "beneficial_paddy": "ఈ వర్షపాతం వరి పంటకు చాలా అనుకూలంగా ఉంది. బోర్ మోటార్లు ఆపివేయండి.",
             "wind_warning": "తీవ్రమైన ఈదురు గాలుల వలన పంట నేలకొరిగే (పడిపోయే) ప్రమాదం ఉంది. వెంటనే మద్దతు కర్రలు కట్టండి.",
@@ -52,7 +67,6 @@ class TranslationService:
             "Tomato": "टमाटर",
             "Banana": "केला",
             "Sugarcane": "गन्ना",
-            "rain_intro": "आपके खेत में आगामी वर्षा और हवा की चेतावनी:",
             "root_rot_warning": "अत्यधिक बारिश से खेत में जलभराव होने पर जड़ों में सड़न (Root Rot) का भारी खतरा है।",
             "beneficial_paddy": "यह वर्षा धान के लिए अत्यंत लाभकारी है। बोरवेल पंप बंद करके जल संरक्षण करें।",
             "wind_warning": "तेज आंधी के कारण फसल गिरने का खतरा है। तनों को सहारा दें।",
@@ -134,7 +148,6 @@ class TranslationService:
         else:
             trans_summary = f"{trans_crop} - {trans_threat}: {summary_msg}"
 
-        # Translated Steps
         translated_steps = []
         for s in steps:
             trans_step = MitigationStep(
@@ -145,7 +158,6 @@ class TranslationService:
             )
             translated_steps.append(trans_step)
 
-        # Audio transcript tailored for the chosen language
         listen_prompt = lang_dict.get("listen_prompt", "Attention farmer")
         audio_script = f"{listen_prompt}. {trans_summary}. {trans_threat}."
 

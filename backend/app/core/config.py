@@ -27,9 +27,13 @@ class Settings(BaseSettings):
     CLERK_SECRET_KEY: str = "mock_secret"
     CLERK_JWKS_URL: str = "https://api.clerk.com/v1/jwks"
     
-    # Weather & AI
+    # Weather & AI Providers
     OPENWEATHER_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    SARVAM_API_KEY: str = ""
+    GOOGLE_MAPS_API_KEY: str = ""
     
     # Notifications / Email
     SMTP_HOST: str = "smtp.gmail.com"
